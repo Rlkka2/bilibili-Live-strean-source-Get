@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B站直播源提取工具</title>
+<style>
+/* ========== Reset ========== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden}
+:root{
+  --pink:#fb7299;--pink-dark:#e06080;--pink-light:#fff0f4;
+  --bg:#f4f5f7;--card:#fff;--card-hover:#fafafa;
+  --text:#18191c;--sub:#61666d;--hint:#9499a0;
+  --border:#e3e5e8;--border-light:#f0f1f3;
+  --green:#00b578;--orange:#ff8c28;--blue:#0086f6;
+  --radius:8px;--shadow:0 1px 3px rgba(0,0,0,.08);
+  --title-bg:#fff;--title-border:#e3e5e8;
+  --log-bg:#1a1a2e;--log-text:#a0ffa0;
+  --tab-bg:#f0f1f3;--tab-active-bg:#fff;
+  --input-bg:#fff;--url-bg:#f8f9fa;
+  transition:background .3s,color .3s,border-color .3s;
+}
+[data-theme="dark"]{
+  --bg:#0f0f1a;--card:#1a1a2e;--card-hover:#222240;
+  --text:#e0e0e0;--sub:#a0a0b0;--hint:#707080;
+  --border:#2a2a40;--border-light:#222240;
+  --shadow:0 1px 4px rgba(0,0,0,.3);
+  --title-bg:#141428;--title-border:#2a2a40;
+  --log-bg:#0a0a14;--log-text:#80ff80;
+  --tab-bg:#1a1a2e;--tab-active-bg:#2a2a44;
+  --input-bg:#1e1e32;--url-bg:#141428;
+}
+
+body{font:14px/1.6 "Microsoft YaHei UI","PingFang SC",sans-serif;color:var(--text);background:var(--bg);height:100vh;display:flex;flex-direction:column;margin:0;padding-top:42px;padding-bottom:28px}
+
+/* ========== 标题栏（固定顶部可拖拽） ========== */
+.title-bar{
+  position:fixed;top:0;left:0;right:0;z-index:999;
+  display:flex;align-items:center;gap:12px;
+  padding:12px 16px;min-height:42px;
+  background:var(--title-bg);border-bottom:1px solid var(--title-border);
+  -webkit-app-region:drag;user-select:none;
+}
+/* 苹果风窗口按钮 */
+.win-btns{display:flex;gap:10px;-webkit-app-region:no-drag;padding-left:2px;align-items:center}
+.win-btn{
+  width:18px;height:18px;border-radius:50%;border:1.5px solid rgba(0,0,0,.12);
+  cursor:pointer;transition:.2s;position:relative;outline:none;flex-shrink:0
+}
+.win-btn.close{background:#ff5f57}
+.win-btn.min{background:#febc2e}
+.win-btn.max{background:#28c840}
+.win-btn:hover{filter:brightness(.8);transform:scale(1.15)}
+.win-btn:active{transform:scale(.9)}
+.win-btn::after{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:8px;font-weight:700;color:rgba(0,0,0,.3);opacity:0;transition:.15s
+}
+.win-btn:hover::after{opacity:1}
+.win-btn.close::after{content:'✕';font-size:7px}
+.win-btn.min::after{content:'−';font-size:8px}
+.win-btn.max::after{content:'⛶';font-size:7px;transform:rotate(45deg)}
+
+.title-text{font-size:14px;font-weight:600;color:var(--text);white-space:nowrap}
+.title-spacer{flex:1}
+
+/* 主题切换 */
+.theme-toggle{
+  -webkit-app-region:no-drag;
+  width:30px;height:30px;border-radius:50%;border:1.5px solid var(--border);
+  background:var(--card);cursor:pointer;font-size:16px;
+  display:flex;align-items:center;justify-content:center;transition:.2s
+}
+.theme-toggle:hover{background:var(--card-hover)}
+
+/* Tab 切换按钮（苹果风格胶囊） */
+.tabs{
+  display:flex;gap:0;background:var(--tab-bg);border-radius:8px;padding:3px;
+  -webkit-app-region:no-drag
+}
+.tab-btn{
+  padding:5px 16px;border:none;border-radius:6px;cursor:pointer;
+  font-size:12px;font-weight:500;background:transparent;color:var(--sub);
+  transition:.2s;white-space:nowrap
+}
+.tab-btn.active{background:var(--tab-active-bg);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.1);
+  font-weight:600}
+.tab-btn:hover:not(.active){color:var(--text)}
+
+/* ========== 主布局 ========== */
+.main{display:flex;flex:1;overflow:hidden;position:relative}
+.page{position:absolute;inset:0;display:none;overflow:auto}
+.page.active{display:flex}
+
+/* ========== 直播源页 ========== */
+#page-live{flex-direction:row}
+.sidebar{
+  width:260px;flex-shrink:0;padding:16px;
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  border-right:1px solid var(--border);background:var(--card)
+}
+.sidebar h3{font-size:14px;color:var(--sub)}
+.qr-box{
+  width:200px;height:200px;border-radius:var(--radius);
+  background:var(--border-light);display:flex;align-items:center;justify-content:center;
+  overflow:hidden;border:2px dashed var(--border)
+}
+.qr-box img{width:100%;height:100%;object-fit:contain}
+.qr-placeholder{color:var(--hint);font-size:12px;text-align:center;line-height:1.6}
+.qr-status{font-size:12px;color:var(--hint);text-align:center;line-height:1.5;min-height:36px}
+
+.btn{
+  display:inline-flex;align-items:center;gap:4px;padding:8px 18px;
+  border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;
+  transition:.15s;white-space:nowrap
+}
+.btn-pink{background:var(--pink);color:#fff}
+.btn-pink:hover{background:var(--pink-dark);transform:translateY(-1px);box-shadow:0 2px 8px rgba(251,114,153,.4)}
+.btn-pink:disabled{background:#d0d0d0;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-outline{background:var(--card);color:var(--text);border:1px solid var(--border)}
+.btn-outline:hover{background:var(--card-hover)}
+.btn-sm{padding:4px 12px;font-size:12px;border-radius:5px}
+
+.login-info{text-align:center;display:none}
+.login-info .avatar{font-size:40px}
+.login-info .nickname{font-size:14px;font-weight:600;margin-top:4px;color:var(--text)}
+.login-info .uid{font-size:11px;color:var(--hint)}
+
+.content{flex:1;padding:16px 20px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.search-row{display:flex;align-items:center;gap:10px}
+.search-row label{font-size:14px;font-weight:500;white-space:nowrap;color:var(--text)}
+.search-row input{
+  flex:1;max-width:200px;padding:8px 12px;border:1px solid var(--border);
+  border-radius:6px;font-size:14px;outline:none;transition:.15s;
+  background:var(--input-bg);color:var(--text)
+}
+.search-row input:focus{border-color:var(--pink);box-shadow:0 0 0 2px var(--pink-light)}
+.room-info{font-size:12px;color:var(--sub);min-height:18px}
+
+.stream-header{display:flex;align-items:center;gap:12px}
+.stream-header h3{font-size:14px;color:var(--text)}
+.stream-count{font-size:12px;color:var(--hint)}
+.stream-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+
+.stream-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:12px;transition:.15s
+}
+.stream-card:hover{border-color:var(--pink);box-shadow:var(--shadow)}
+.card-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.qn-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.card-meta{font-size:12px;color:var(--sub);margin-left:auto}
+.url-box{
+  font-family:"Consolas","Courier New",monospace;font-size:11px;
+  color:var(--sub);background:var(--url-bg);padding:6px 10px;
+  border-radius:4px;word-break:break-all;margin-bottom:8px;
+  max-height:34px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.card-actions{display:flex;gap:6px;justify-content:flex-end}
+
+.placeholder{text-align:center;color:var(--hint);padding:40px;font-size:13px}
+
+/* ========== 日志页 ========== */
+#page-log{flex-direction:column;padding:16px 20px}
+.log-toolbar{display:flex;gap:8px;margin-bottom:10px}
+.log-viewer{
+  flex:1;background:var(--log-bg);color:var(--log-text);
+  font-family:"Consolas","Courier New",monospace;font-size:12px;
+  padding:14px;border-radius:var(--radius);overflow:auto;
+  white-space:pre-wrap;word-break:break-all;line-height:1.6;
+  border:1px solid var(--border)
+}
+
+/* ========== 状态栏 ========== */
+.status-bar{
+  position:fixed;bottom:0;left:0;right:0;z-index:999;
+  display:flex;align-items:center;padding:6px 16px;
+  background:var(--card);border-top:1px solid var(--border);
+  font-size:11px;color:var(--hint);gap:8px;min-height:28px
+}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.status-dot.off{background:var(--hint)}
+
+/* ========== 滚动条 ========== */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#d0d0d0;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#b0b0b0}
+</style>
+</head>
+<body>
+
+<!-- ========== 标题栏 ========== -->
+<div class="title-bar">
+  <div class="win-btns">
+    <button class="win-btn close" onclick="pywebview.api.close_window()" title="关闭"></button>
+    <button class="win-btn min" onclick="pywebview.api.minimize_window()" title="最小化"></button>
+    <button class="win-btn max" onclick="pywebview.api.toggle_maximize()" title="最大化"></button>
+  </div>
+  <span class="title-text">B站直播源提取工具</span>
+  <div class="title-spacer"></div>
+  <button class="theme-toggle" onclick="toggleTheme()" title="切换深色/浅色">🌙</button>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('live')">📺 直播源</button>
+    <button class="tab-btn" onclick="switchTab('log')">📋 日志</button>
+  </div>
+</div>
+
+<!-- ========== 主内容 ========== -->
+<div class="main">
+
+  <!-- 直播源页 -->
+  <div id="page-live" class="page active">
+    <div class="sidebar" id="sidebar">
+      <h3>账号登录</h3>
+      <div id="login-before">
+        <div class="qr-box" id="qr-box">
+          <span class="qr-placeholder">点击下方按钮<br>获取登录二维码</span>
+        </div>
+        <div class="qr-status" id="qr-status">未登录</div>
+        <button class="btn btn-pink" id="btn-login" onclick="startLogin()">📱 扫码登录</button>
+        <button class="btn btn-outline btn-sm" id="btn-cancel" onclick="stopLogin()" style="display:none">取消</button>
+      </div>
+      <div class="login-info" id="login-after">
+        <div class="avatar">😊</div>
+        <div class="nickname" id="nickname"></div>
+        <div class="uid" id="uid-display"></div>
+        <button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="logout()">🚪 退出登录</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="search-row">
+        <label>直播间号：</label>
+        <input type="text" id="room-input" placeholder="输入数字房间号" onkeydown="if(event.key==='Enter')fetchStreams()" autofocus>
+        <button class="btn btn-pink" id="btn-fetch" onclick="fetchStreams()">🔍 获取直播源</button>
+      </div>
+      <div class="room-info" id="room-info"></div>
+
+      <div class="stream-header">
+        <h3>📺 直播源列表</h3>
+        <span class="stream-count" id="stream-count"></span>
+        <button class="btn btn-outline btn-sm" id="btn-copy-all" onclick="copyAll()" style="display:none">📋 复制全部</button>
+      </div>
+
+      <div class="stream-list" id="stream-list">
+        <div class="placeholder">登录后输入直播间号即可获取直播源</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 日志页 -->
+  <div id="page-log" class="page">
+    <div class="log-toolbar">
+      <button class="btn btn-outline btn-sm" onclick="refreshLogs()">🔄 刷新</button>
+      <button class="btn btn-outline btn-sm" onclick="clearLogs()">🗑 清空</button>
+      <button class="btn btn-outline btn-sm" onclick="copyLogs()">📋 复制日志</button>
+    </div>
+    <div class="log-viewer" id="log-viewer">日志加载中...</div>
+  </div>
+</div>
+
+<!-- 状态栏 -->
+<div class="status-bar">
+  <span class="status-dot" id="status-dot"></span>
+  <span id="status-text">就绪 — 欢迎使用</span>
+</div>
+
+<script>
+// ==================== 主题 ====================
+function toggleTheme(){
+  const html=document.documentElement;
+  const cur=html.getAttribute('data-theme');
+  const next=cur==='dark'?'light':'dark';
+  html.setAttribute('data-theme',next);
+  document.querySelector('.theme-toggle').textContent=next==='dark'?'☀️':'🌙';
+  localStorage.setItem('bili-theme',next);
+}
+(function(){
+  const saved=localStorage.getItem('bili-theme')||'light';
+  document.documentElement.setAttribute('data-theme',saved);
+  document.querySelector('.theme-toggle').textContent=saved==='dark'?'☀️':'🌙';
+})();
+
+// ==================== Tab 切换 ====================
+function switchTab(name){
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>{
+    b.classList.toggle('active',(i===0&&name==='live')||(i===1&&name==='log'));
+  });
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  if(name==='log')refreshLogs();
+}
+
+// ==================== 状态栏 ====================
+function setStatus(msg,ok=true){
+  document.getElementById('status-text').textContent=msg;
+  document.getElementById('status-dot').className='status-dot'+(ok?'':' off');
+}
+
+// ==================== 登录 ====================
+let loginPollTimer=null;
+let isLoggedIn=false;
+
+async function tryAutoLogin(){
+  const r=await pywebview.api.load_cookies();
+  if(r)showLoggedIn(r.uid,r.nickname);
+}
+
+async function startLogin(){
+  const btn=document.getElementById('btn-login');
+  btn.disabled=true;btn.textContent='⏳ 获取中...';
+  document.getElementById('btn-cancel').style.display='inline-block';
+  setStatus('正在获取二维码...');
+
+  const r=await pywebview.api.generate_qr();
+  if(!r.success){
+    setStatus('获取二维码失败: '+r.error,false);
+    btn.disabled=false;btn.textContent='📱 重新扫码';
+    document.getElementById('btn-cancel').style.display='none';
+    return;
+  }
+
+  const qrB64=await pywebview.api.make_qr_image(r.qr_url);
+  document.getElementById('qr-box').innerHTML='<img src="data:image/png;base64,'+qrB64+'">';
+  document.getElementById('qr-status').textContent='请用B站APP扫码';
+  btn.textContent='⏳ 等待扫码...';
+
+  let count=0;
+  loginPollTimer=setInterval(async()=>{
+    const poll=await pywebview.api.poll_qr(r.qrcode_key);
+    count++;
+    const el=document.getElementById('qr-status');
+    el.textContent='['+count+'] '+poll.message;
+
+    if(poll.status==='logged_in'){
+      clearInterval(loginPollTimer);loginPollTimer=null;
+      await pywebview.api.save_cookies();
+      const info=await pywebview.api.get_login_info();
+      showLoggedIn(info.uid,info.nickname);
+      setStatus('✅ 登录成功');
+    }else if(poll.status==='expired'){
+      el.textContent='二维码过期，正在刷新...';
+      clearInterval(loginPollTimer);
+      document.getElementById('btn-login').disabled=false;
+      document.getElementById('btn-login').textContent='📱 重新扫码';
+      startLogin();
+    }else if(poll.status==='error'){
+      clearInterval(loginPollTimer);loginPollTimer=null;
+      el.textContent='❌ '+poll.message;
+      btn.disabled=false;btn.textContent='📱 重新扫码';
+      document.getElementById('btn-cancel').style.display='none';
+      setStatus(poll.message,false);
+    }
+  },2000);
+}
+
+function stopLogin(){
+  if(loginPollTimer){clearInterval(loginPollTimer);loginPollTimer=null;}
+  document.getElementById('btn-login').disabled=false;
+  document.getElementById('btn-login').textContent='📱 扫码登录';
+  document.getElementById('btn-cancel').style.display='none';
+  document.getElementById('qr-box').innerHTML='<span class="qr-placeholder">点击下方按钮<br>获取登录二维码</span>';
+  document.getElementById('qr-status').textContent='已取消';
+  setStatus('已取消登录');
+}
+
+function showLoggedIn(uid,nickname){
+  isLoggedIn=true;
+  document.getElementById('login-before').style.display='none';
+  document.getElementById('login-after').style.display='block';
+  document.getElementById('nickname').textContent=nickname||'B站用户';
+  document.getElementById('uid-display').textContent='UID: '+(uid||'-');
+  document.getElementById('btn-login').disabled=false;
+  document.getElementById('btn-login').textContent='📱 扫码登录';
+  document.getElementById('btn-cancel').style.display='none';
+  setStatus('✅ 已登录 — '+(nickname||'B站用户'));
+}
+
+async function logout(){
+  await pywebview.api.logout();
+  isLoggedIn=false;
+  document.getElementById('login-before').style.display='';
+  document.getElementById('login-after').style.display='none';
+  document.getElementById('qr-box').innerHTML='<span class="qr-placeholder">点击下方按钮<br>获取登录二维码</span>';
+  document.getElementById('qr-status').textContent='未登录';
+  clearStreams();
+  setStatus('已退出登录');
+}
+
+// ==================== 直播源 ====================
+let fetchPollTimer=null;
+let currentStreams=[];
+
+async function fetchStreams(){
+  const roomId=document.getElementById('room-input').value.trim();
+  if(!roomId)return alert('请输入直播间号');
+  if(!/^\d+$/.test(roomId))return alert('直播间号必须是纯数字');
+  if(!isLoggedIn)return alert('请先扫码登录');
+
+  const btn=document.getElementById('btn-fetch');
+  btn.disabled=true;btn.textContent='⏳ 获取中...';
+  document.getElementById('room-info').textContent='';
+  clearStreams();
+  setStatus('正在获取直播间 '+roomId+' ...');
+
+  await pywebview.api.start_fetch_streams(roomId);
+  fetchPollTimer=setInterval(async()=>{
+    const s=await pywebview.api.get_fetch_status();
+    if(s.status==='running'){
+      setStatus(s.progress||'正在检测CDN节点连通性...');
+    }else if(s.status==='done'){
+      clearInterval(fetchPollTimer);fetchPollTimer=null;
+      btn.disabled=false;btn.textContent='🔍 获取直播源';
+      displayResults(s.result);
+    }else if(s.status==='error'){
+      clearInterval(fetchPollTimer);fetchPollTimer=null;
+      btn.disabled=false;btn.textContent='🔍 获取直播源';
+      document.getElementById('room-info').textContent='❌ '+(s.result?.error||'未知错误');
+      setStatus('获取失败: '+(s.result?.error||''),false);
+    }
+  },500);
+}
+
+function displayResults(result){
+  const info=result.room_info||{};
+  const play=result.play_info||{};
+  const parts=[];
+  if(info.uname)parts.push('👤 '+info.uname);
+  if(info.title)parts.push('🎤 '+info.title);
+  if(info.area_name)parts.push('📂 '+info.area_name);
+  parts.push(info.is_live?'🟢 直播中':'⚫ 未开播');
+  document.getElementById('room-info').textContent=parts.join('  |  ');
+
+  if(!info.is_live){
+    document.getElementById('stream-list').innerHTML='<div class="placeholder">该直播间当前未开播 😴</div>';
+    setStatus('房间未开播');return;
+  }
+  if(!play.success){
+    document.getElementById('stream-list').innerHTML='<div class="placeholder">❌ '+play.error+'</div>';
+    setStatus('获取失败: '+play.error,false);return;
+  }
+
+  const streams=play.streams||[];
+  document.getElementById('stream-count').textContent='共 '+streams.length+' 条';
+  document.getElementById('btn-copy-all').style.display=streams.length?'inline-block':'none';
+  currentStreams=streams;
+
+  const list=document.getElementById('stream-list');
+  list.innerHTML='';
+  if(!streams.length){
+    list.innerHTML='<div class="placeholder">未获取到可用直播流</div>';
+    setStatus('无可用流');return;
+  }
+
+  streams.forEach((s,i)=>{
+    const qnDesc=s.qn_desc||'未知';
+    let dotColor='#9499a0';
+    for(const[k,v]of Object.entries({杜比:'#fb7299','4K':'#ab68ff','2K':'#ab68ff',原画:'#fb7299',蓝光:'#00b578',超清:'#ff8c28',高清:'#0086f6'})){
+      if(qnDesc.includes(k)){dotColor=v;break}
+    }
+
+    // 测速信息标记
+    const speedMs=s.speed_ms||0;
+    const speedRounds=s.speed_rounds||0;
+    const speedTotal=s.speed_total_rounds||0;
+    let speedHtml='';
+    if(speedTotal>0){
+      const speedIcon=speedMs<200?'🟢':speedMs<500?'🟡':'🟠';
+      speedHtml='<span class="card-meta">'+speedIcon+' '+speedMs+'ms · '+speedRounds+'/'+speedTotal+'次</span>';
+    }
+
+    const card=document.createElement('div');
+    card.className='stream-card';
+    card.innerHTML='<div class="card-row">'+
+      '<span class="qn-dot" style="background:'+dotColor+'"></span>'+
+      '<b style="font-size:13px;color:var(--text)">#'+(i+1)+' '+escHtml(qnDesc)+'</b>'+
+      '<span class="card-meta">'+escHtml(s.codec||'')+' · '+escHtml(s.format||'')+'</span>'+speedHtml+
+      '</div>'+
+      '<div class="url-box" title="'+escHtml(s.url)+'">'+escHtml(s.url)+'</div>'+
+      '<div class="card-actions">'+
+      '<button class="btn btn-pink btn-sm" onclick="playStream(\''+escAttr(s.url)+'\',\''+(info.room_id||roomId())+'\')">▶ 播放</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="copyUrl(\''+escAttr(s.url)+'\')">📋 复制</button>'+
+      '</div>';
+    list.appendChild(card);
+  });
+  setStatus('✅ 成功获取 '+streams.length+' 条直播源（已按延迟排序）');
+}
+
+function roomId(){return document.getElementById('room-input').value.trim();}
+
+function clearStreams(){
+  currentStreams=[];
+  document.getElementById('stream-list').innerHTML='<div class="placeholder">登录后输入直播间号即可获取直播源</div>';
+  document.getElementById('stream-count').textContent='';
+  document.getElementById('btn-copy-all').style.display='none';
+  document.getElementById('room-info').textContent='';
+}
+
+// ==================== 播放 & 复制 ====================
+async function playStream(url,roomId){
+  setStatus('正在启动本地代理...');
+  const r=await pywebview.api.play(url,roomId);
+  setStatus(r.status||'已启动播放器');
+}
+async function copyUrl(url){await pywebview.api.copy(url);setStatus('✅ 已复制到剪贴板');}
+async function copyAll(){
+  const text=currentStreams.map(s=>s.url).join('\n');
+  await pywebview.api.copy(text);
+  setStatus('✅ 已复制全部 '+currentStreams.length+' 条链接');
+}
+
+// ==================== 日志 ====================
+async function refreshLogs(){
+  const logs=await pywebview.api.get_logs();
+  document.getElementById('log-viewer').textContent=logs||'(暂无日志)';
+  document.getElementById('log-viewer').scrollTop=document.getElementById('log-viewer').scrollHeight;
+}
+async function clearLogs(){
+  await pywebview.api.clear_logs();
+  document.getElementById('log-viewer').textContent='(日志已清空)';
+}
+async function copyLogs(){
+  const logs=await pywebview.api.get_logs();
+  await pywebview.api.copy(logs);
+  setStatus('✅ 日志已复制到剪贴板');
+}
+
+// ==================== 工具 ====================
+function escHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function escAttr(s){return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ==================== 启动 ====================
+window.addEventListener('pywebviewready',async()=>{
+  await tryAutoLogin();
+  refreshLogs();
+});
+</script>
+</body>
+</html>
