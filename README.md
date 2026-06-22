@@ -8,6 +8,10 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
 
+## ⚠️ 安全提示
+
+账户 Cookie 以明文形式保存在本地 `cookies.json` 中。为确保账户安全，使用后请退出登录以清除本地凭证。
+
 ## ✨ 功能特性
 
 - 🔐 **扫码登录** — 支持 B站 APP 扫码登录，Cookie 本地持久化，下次启动自动恢复
@@ -85,10 +89,5 @@ python 1.py
 | `requests` | HTTP API 调用 + CDN 连通性检测 |
 | `tkinter`（内置） | 剪贴板操作（Python 标准库） |
 
-## ⚠️ 安全提示
 
-账户 Cookie 以明文形式保存在本地 `cookies.json` 中。为确保账户安全，使用后请退出登录以清除本地凭证。
 
-## 📄 License
-
-MIT
